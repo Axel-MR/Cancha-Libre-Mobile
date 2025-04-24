@@ -1,19 +1,24 @@
-// routes/authRoutes.js
 const express = require('express');
 const router = express.Router();
-const authController = require('../controllers/authController');
-const { check } = require('express-validator'); // Instálalo con npm install express-validator
+const {
+  crearUsuario,
+  obtenerUsuarios,
+  obtenerUsuarioPorId,
+  eliminarUsuario,
+  actualizarUsuario,
+  iniciarSesion
+} = require('../controllers/usuarioController');
 
-router.get('/', authController.status);
+const authMiddleware = require('../middleware/auth');
 
-router.post('/registro', [
-  check('correo').isEmail().normalizeEmail(),
-  check('clave').isLength({ min: 6 }),
-  check('nombre').not().isEmpty().trim(),
-  check('telefono').isLength({ min: 10, max: 10 }),
-  check('clave_ine').not().isEmpty()
-], authController.registro);
+// Ruta de login (sin protección)
+router.post('/login', iniciarSesion);
 
-router.post('/login', authController.login); 
+// Rutas protegidas
+router.post('/registro', crearUsuario);
+router.get('/', authMiddleware, obtenerUsuarios);
+router.get('/:id', authMiddleware, obtenerUsuarioPorId);
+router.delete('/:id', authMiddleware, eliminarUsuario);
+router.put('/:id', authMiddleware, actualizarUsuario);
 
 module.exports = router;

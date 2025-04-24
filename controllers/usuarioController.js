@@ -1,159 +1,113 @@
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const bcrypt = require('bcrypt'); // Para hashear contraseñas
+const bcrypt = require('bcryptjs'); // Cambiado a bcryptjs para mayor compatibilidad
 
-// Crear un nuevo usuario
+// Función para manejar errores de Prisma
+const handlePrismaError = (error, res) => {
+  console.error('Error de Prisma:', error);
+  if (error.code === 'P2002') {
+    return res.status(400).json({ error: 'El correo ya está registrado' });
+  }
+  res.status(500).json({ error: 'Error del servidor', details: error.message });
+};
+
+// Controladores
 const crearUsuario = async (req, res) => {
   const { correo, nombre, telefono, clave_ine, edad, sexo, estatura, peso, ejercicio_semanal, rol, clave } = req.body;
 
-  // Validación básica de campos obligatorios
   if (!correo || !nombre || !telefono || !clave_ine || !rol || !clave) {
     return res.status(400).json({ error: 'Faltan campos obligatorios' });
   }
 
   try {
-    // Hashear la contraseña antes de guardarla
     const hashedClave = await bcrypt.hash(clave, 10);
-
     const newUser = await prisma.usuarios.create({
-      data: {
-        correo,
-        nombre,
-        telefono,
-        clave_ine,
-        edad,
-        sexo,
-        estatura,
-        peso,
-        ejercicio_semanal,
-        rol,
-        clave: hashedClave, // Guardar la contraseña hasheada
-      },
+      data: { correo, nombre, telefono, clave_ine, edad, sexo, estatura, peso, ejercicio_semanal, rol, clave: hashedClave },
     });
-    console.log('Usuario creado exitosamente:', newUser);
-    res.json(newUser);
+    res.status(201).json(newUser);
   } catch (error) {
-    console.error('Error al crear usuario:', error);
-    res.status(500).json({ error: 'Error al crear usuario', details: error.message });
+    handlePrismaError(error, res);
   }
 };
 
-// Obtener todos los usuarios
 const obtenerUsuarios = async (req, res) => {
   try {
     const usuarios = await prisma.usuarios.findMany();
     res.json(usuarios);
   } catch (error) {
-    console.error('Error al obtener usuarios:', error);
-    res.status(500).json({ error: 'Error al obtener usuarios', details: error.message });
+    handlePrismaError(error, res);
   }
 };
 
-// Obtener un usuario por ID
 const obtenerUsuarioPorId = async (req, res) => {
-  const { id } = req.params;
-
   try {
-    const user = await prisma.usuarios.findUnique({
-      where: { id: id }, 
-    });
-    if (user) {
-      res.json(user);
-    } else {
-      res.status(404).json({ error: 'Usuario no encontrado' });
-    }
+    const user = await prisma.usuarios.findUnique({ where: { id: req.params.id } });
+    user ? res.json(user) : res.status(404).json({ error: 'Usuario no encontrado' });
   } catch (error) {
-    console.error('Error al obtener usuario:', error);
-    res.status(500).json({ error: 'Error al obtener usuario', details: error.message });
+    handlePrismaError(error, res);
   }
 };
 
-// Eliminar un usuario
 const eliminarUsuario = async (req, res) => {
-  const { id } = req.params;
-
   try {
-    await prisma.usuarios.delete({
-      where: { id: id }, 
-    });
+    await prisma.usuarios.delete({ where: { id: req.params.id } });
     res.json({ message: 'Usuario eliminado correctamente' });
   } catch (error) {
-    console.error('Error al eliminar usuario:', error);
-    res.status(500).json({ error: 'Error al eliminar usuario', details: error.message });
+    error.code === 'P2025' 
+      ? res.status(404).json({ error: 'Usuario no encontrado' })
+      : handlePrismaError(error, res);
   }
 };
 
-// Actualizar un usuario por ID
 const actualizarUsuario = async (req, res) => {
-  const { id } = req.params;
-  const datosActualizados = req.body;
-
   try {
-    // Si se actualiza la contraseña, hashearla
-    if (datosActualizados.clave) {
-      datosActualizados.clave = await bcrypt.hash(datosActualizados.clave, 10);
+    const datos = req.body;
+    if (datos.clave) {
+      datos.clave = await bcrypt.hash(datos.clave, 10);
     }
-
-    const usuarioActualizado = await prisma.usuarios.update({
-      where: { id: id },
-      data: datosActualizados,
+    const usuario = await prisma.usuarios.update({
+      where: { id: req.params.id },
+      data: datos
     });
-
-    res.json(usuarioActualizado);
+    res.json(usuario);
   } catch (error) {
-    if (error.code === 'P2025') {
-      res.status(404).json({ error: 'Usuario no encontrado' });
-    } else {
-      console.error('Error al actualizar usuario:', error);
-      res.status(500).json({ error: 'Error al actualizar usuario', details: error.message });
-    }
+    handlePrismaError(error, res);
   }
 };
 
-
-// Iniciar sesión
 const iniciarSesion = async (req, res) => {
   const { correo, clave } = req.body;
-
+  
   if (!correo || !clave) {
-    return res.status(400).json({ error: 'Faltan campos obligatorios' });
+    return res.status(400).json({ error: 'Faltan credenciales' });
   }
 
   try {
-    // Buscar al usuario por correo
     const usuario = await prisma.usuarios.findUnique({ where: { correo } });
-    if (!usuario) {
+    if (!usuario || !(await bcrypt.compare(clave, usuario.clave))) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    // Comparar la contraseña hasheada
-    const claveValida = await bcrypt.compare(clave, usuario.clave);
-    if (!claveValida) {
-      return res.status(401).json({ error: 'Credenciales inválidas' });
-    }
-
-    // Generar el token JWT
     const token = jwt.sign(
-      { userId: usuario.id, rol: usuario.rol }, // Payload (datos del usuario)
-      'secreto', 
+      { userId: usuario.id, rol: usuario.rol },
+      process.env.JWT_SECRET || 'secreto_fallback',
       { expiresIn: '1h' }
     );
 
-    // Devolver el token en la respuesta
-    res.json({ message: 'Inicio de sesión exitoso', usuario, token });
+    // Excluir la contraseña hash de la respuesta
+    const { clave: _, ...userData } = usuario;
+    res.json({ token, usuario: userData });
   } catch (error) {
-    console.error('Error al iniciar sesión:', error);
-    res.status(500).json({ error: 'Error al iniciar sesión', details: error.message });
+    handlePrismaError(error, res);
   }
 };
 
-// Exportar las funciones
 module.exports = {
   crearUsuario,
   obtenerUsuarios,
   obtenerUsuarioPorId,
-  actualizarUsuario,
   eliminarUsuario,
-  iniciarSesion,
+  actualizarUsuario,
+  iniciarSesion
 };
