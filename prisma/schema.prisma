@@ -1,0 +1,99 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Usuarios {
+  id              String              @id @default(uuid())
+  correo          String              @unique
+  nombre          String
+  telefono        String
+  clave_ine       String
+  edad            Int?
+  sexo            String?
+  estatura        Float?
+  peso            Float?
+  ejercicio_semanal Int?
+  
+  // Relaciones
+  reservas        Reserva[]           @relation("ReservasUsuario")     // ← Relacionadas como reservador
+  responsables    Reserva[]           @relation("ReservasResponsable") // ← Relacionadas como responsable
+  
+  reservasHechas  Int                 @default(0)
+  faltas          Int                 @default(0)
+  rol             String
+  clave           String
+  centros         CentroDeportivo[]   @relation("PersonalCentro") 
+  avatarUrl       String?             
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+}
+
+model CentroDeportivo {
+  id              String              @id @default(uuid())
+  nombre          String
+  ubicacion       String
+  imagenUrl       String?
+  canchas         Cancha[]           
+  reservas        Reserva[]           
+  personal        Usuarios[]          @relation("PersonalCentro")
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  imagenNombre    String?             
+  imagenTamaño    Int?               
+  imagenTipo      String?            
+}
+
+model Cancha {
+  id              String              @id @default(uuid())
+  nombre          String
+  deporte         String
+  alumbrado       Boolean         
+  jugadores       Int
+  imagenUrl       String?
+  centroDeportivo CentroDeportivo     @relation(fields: [centroDeportivoId], references: [id])
+  centroDeportivoId String
+  reservas        Reserva[]           
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+}
+
+model Reserva {
+  id                String           @id @default(uuid())
+  fecha             DateTime
+  horaInicio        DateTime
+  horaFin           DateTime
+  estado            String           @default("DISPONIBLE")
+  
+  centroDeportivo   CentroDeportivo  @relation(fields: [centroDeportivoId], references: [id])
+  centroDeportivoId String
+  cancha            Cancha           @relation(fields: [canchaId], references: [id])
+  canchaId          String
+
+  reservador        Usuarios?        @relation("ReservasUsuario", fields: [reservadorId], references: [id])
+  reservadorId      String?
+
+  responsable       Usuarios?        @relation("ReservasResponsable", fields: [responsableId], references: [id])
+  responsableId     String?
+
+  objetosRentados   ObjetoRenta[]
+  
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+}
+
+model ObjetoRenta {
+  id          String    @id @default(uuid())
+  nombre      String    
+  cantidad    Int       
+  imagenUrl   String?
+  reserva     Reserva   @relation(fields: [reservaId], references: [id])
+  reservaId   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
