@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import { KeyboardAvoidingView, Platform } from "react-native";
 import api from "../../services/api"; // Importación del API
 import axios from "axios"; // Importar axios directamente como respaldo
 import LogoTitle from "../../components/LogoTitle";
@@ -113,71 +114,75 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.contentContainer}>
-        <LogoTitle title="INICIAR SESIÓN" />
+  <View style={styles.container}>
+  <KeyboardAvoidingView
+    style={styles.contentContainer}
+    behavior={Platform.OS === "ios" ? "padding" : undefined}
+    keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0} // ajusta si usas header
+  >
+    <LogoTitle title="INICIAR SESIÓN" />
 
-        <FormLabel>Correo Electrónico</FormLabel>
-        <TextInput
-          placeholder="ejemplo@correo.com"
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          autoComplete="email"
-          textContentType="emailAddress"
+    <FormLabel>Correo Electrónico</FormLabel>
+    <TextInput
+      placeholder="ejemplo@correo.com"
+      value={email}
+      onChangeText={setEmail}
+      style={styles.input}
+      autoCapitalize="none"
+      keyboardType="email-address"
+      autoComplete="email"
+      textContentType="emailAddress"
+    />
+
+    <FormLabel>Contraseña</FormLabel>
+    <View style={styles.passwordContainer}>
+      <TextInput
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry={!showPassword}
+        style={styles.inputPassword}
+        autoCapitalize="none"
+        autoComplete="password"
+        textContentType="password"
+      />
+      <TouchableOpacity
+        onPress={() => setShowPassword(!showPassword)}
+        style={styles.eyeIcon}
+      >
+        <Ionicons
+          name={showPassword ? "eye-off" : "eye"}
+          size={22}
+          color="#666"
         />
-
-        <FormLabel>Contraseña</FormLabel>
-        <View style={styles.passwordContainer}>
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry={!showPassword}
-            style={styles.inputPassword}
-            autoCapitalize="none"
-            autoComplete="password"
-            textContentType="password"
-          />
-          <TouchableOpacity
-            onPress={() => setShowPassword(!showPassword)}
-            style={styles.eyeIcon}
-          >
-            <Ionicons
-              name={showPassword ? "eye-off" : "eye"}
-              size={22}
-              color="#666"
-            />
-          </TouchableOpacity>
-        </View>
-
-        {loading ? (
-          <ActivityIndicator size="large" color="#2f95dc" />
-        ) : (
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            <Text style={styles.loginButtonText}>Iniciar sesión</Text>
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          style={styles.registerLink}
-          onPress={handleRegister}
-          disabled={loading}
-        >
-          <Text style={styles.registerText}>
-            ¿No tienes cuenta?{" "}
-            <Text style={styles.registerHighlight}>Regístrate aquí</Text>
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <OrangeCirclesFooter />
+      </TouchableOpacity>
     </View>
+
+    {loading ? (
+      <ActivityIndicator size="large" color="#2f95dc" />
+    ) : (
+      <TouchableOpacity
+        style={styles.loginButton}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        <Text style={styles.loginButtonText}>Iniciar sesión</Text>
+      </TouchableOpacity>
+    )}
+
+    <TouchableOpacity
+      style={styles.registerLink}
+      onPress={handleRegister}
+      disabled={loading}
+    >
+      <Text style={styles.registerText}>
+        ¿No tienes cuenta?{" "}
+        <Text style={styles.registerHighlight}>Regístrate aquí</Text>
+      </Text>
+    </TouchableOpacity>
+  </KeyboardAvoidingView>
+
+  <OrangeCirclesFooter />
+</View>
   );
 }
 

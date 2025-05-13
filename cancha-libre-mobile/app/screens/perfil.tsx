@@ -6,19 +6,27 @@ import {
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  TextInput,
-  Image,
   Alert,
-  ActivityIndicator,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Dimensions
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
+import { StatusBar } from 'expo-status-bar';
 import api from '../../services/api';
 import { useRouter } from 'expo-router';
 import { jwtDecode } from 'jwt-decode';
+
+// Componentes
+import ProfileHeader from '../../components/profile/ProfileHeader';
+import ProfileStats from '../../components/profile/ProfileStats';
+import ProfileField from '../../components/profile/ProfileField';
+import GenderSelector from '../../components/profile/GenderSelector';
+import ActionButton from '../../components/profile/ActionButton';
+import LoadingState from '../../components/profile/LoadingState';
+import ErrorState from '../../components/profile/ErrorState';
+import ProfileSection from '../../components/profile/ProfileSection';
 
 // Tipo para los datos del usuario
 interface UserData {
@@ -48,6 +56,9 @@ interface EditableData {
   ejercicio_semanal: string;
   avatarUrl?: string;
 }
+
+// Obtener la altura de la pantalla
+const screenHeight = Dimensions.get('window').height;
 
 const Perfil = () => {
   const router = useRouter();
@@ -81,7 +92,6 @@ const Perfil = () => {
       console.log('Token obtenido:', token);
       
       // Decodificar el token para obtener el ID del usuario
-      // Usando la importación corregida de jwt-decode
       const decoded: any = jwtDecode(token);
       console.log('Token decodificado:', decoded);
       
@@ -304,14 +314,29 @@ const Perfil = () => {
     );
   };
 
+  // Función para cancelar la edición
+  const handleCancelEdit = () => {
+    // Restaurar datos originales
+    if (userData) {
+      setEditableData({
+        nombre: userData.nombre || '',
+        telefono: userData.telefono || '',
+        edad: userData.edad ? userData.edad.toString() : '',
+        sexo: userData.sexo || '',
+        estatura: userData.estatura ? userData.estatura.toString() : '',
+        peso: userData.peso ? userData.peso.toString() : '',
+        ejercicio_semanal: userData.ejercicio_semanal ? userData.ejercicio_semanal.toString() : '',
+        avatarUrl: userData.avatarUrl
+      });
+    }
+    setIsEditing(false);
+  };
+
   // Renderizar pantalla de carga
   if (isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2196F3" />
-          <Text style={styles.loadingText}>Cargando perfil...</Text>
-        </View>
+        <LoadingState message="Cargando perfil..." />
       </SafeAreaView>
     );
   }
@@ -320,276 +345,131 @@ const Perfil = () => {
   if (error) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Ionicons name="alert-circle" size={60} color="#F44336" />
-          <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity 
-            style={styles.retryButton}
-            onPress={fetchUserData}
-          >
-            <Text style={styles.retryButtonText}>Reintentar</Text>
-          </TouchableOpacity>
-        </View>
+        <ErrorState message={error} onRetry={fetchUserData} />
       </SafeAreaView>
     );
   }
 
-  // Renderizar pantalla principal
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          // Añadir padding inferior para evitar que el botón quede tapado
+          contentInset={{ bottom: 100 }}
+          contentOffset={{ x: 0, y: 0 }}
+          automaticallyAdjustKeyboardInsets={true}
+        >
           {/* Cabecera */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Mi Perfil</Text>
-            {!isEditing ? (
-              <TouchableOpacity 
-                style={styles.editButton}
-                onPress={() => setIsEditing(true)}
-              >
-                <Ionicons name="create-outline" size={20} color="white" />
-                <Text style={styles.editButtonText}>Editar</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity 
-                style={styles.cancelButton}
-                onPress={() => {
-                  // Restaurar datos originales
-                  if (userData) {
-                    setEditableData({
-                      nombre: userData.nombre || '',
-                      telefono: userData.telefono || '',
-                      edad: userData.edad ? userData.edad.toString() : '',
-                      sexo: userData.sexo || '',
-                      estatura: userData.estatura ? userData.estatura.toString() : '',
-                      peso: userData.peso ? userData.peso.toString() : '',
-                      ejercicio_semanal: userData.ejercicio_semanal ? userData.ejercicio_semanal.toString() : '',
-                      avatarUrl: userData.avatarUrl
-                    });
-                  }
-                  setIsEditing(false);
-                }}
-              >
-                <Ionicons name="close" size={20} color="white" />
-                <Text style={styles.editButtonText}>Cancelar</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          <ProfileHeader 
+            title="Mi Perfil" 
+            isEditing={isEditing} 
+            onEdit={() => setIsEditing(true)} 
+            onCancel={handleCancelEdit} 
+          />
           
           {/* Sección de perfil */}
           <View style={styles.profileSection}>
-            <View style={styles.avatarContainer}>
-              <Image 
-                source={{ 
-                  uri: editableData.avatarUrl || 'https://via.placeholder.com/150?text=Usuario'
-                }} 
-                style={styles.avatar} 
-              />
-              {isEditing && (
-                <TouchableOpacity 
-                  style={styles.changeAvatarButton}
-                  onPress={handlePickImage}
-                >
-                  <Ionicons name="camera" size={20} color="white" />
-                </TouchableOpacity>
-              )}
-            </View>
-            
             <Text style={styles.userName}>{userData?.nombre}</Text>
             <Text style={styles.userEmail}>{userData?.correo}</Text>
             
-            <View style={styles.statsContainer}>
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{userData?.reservasHechas || 0}</Text>
-                <Text style={styles.statLabel}>Reservas</Text>
-              </View>
-              <View style={styles.statDivider} />
-              <View style={styles.statItem}>
-                <Text style={styles.statValue}>{userData?.faltas || 0}</Text>
-                <Text style={styles.statLabel}>Faltas</Text>
-              </View>
-            </View>
+            <ProfileStats 
+              reservas={userData?.reservasHechas || 0} 
+              faltas={userData?.faltas || 0} 
+            />
           </View>
           
           {/* Sección de información personal */}
-          <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Información Personal</Text>
+          <ProfileSection title="Información Personal">
+            <ProfileField 
+              label="Nombre"
+              value={editableData.nombre}
+              isEditing={isEditing}
+              onChangeText={(text) => setEditableData({...editableData, nombre: text})}
+              placeholder="Tu nombre"
+            />
             
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Nombre</Text>
-              {isEditing ? (
-                <TextInput
-                  style={styles.textInput}
-                  value={editableData.nombre}
-                  onChangeText={(text) => setEditableData({...editableData, nombre: text})}
-                  placeholder="Tu nombre"
-                />
-              ) : (
-                <Text style={styles.inputValue}>{userData?.nombre || 'No especificado'}</Text>
-              )}
-            </View>
+            <ProfileField 
+              label="Teléfono"
+              value={editableData.telefono}
+              isEditing={isEditing}
+              onChangeText={(text) => setEditableData({...editableData, telefono: text})}
+              placeholder="Tu teléfono"
+              keyboardType="phone-pad"
+            />
             
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Teléfono</Text>
-              {isEditing ? (
-                <TextInput
-                  style={styles.textInput}
-                  value={editableData.telefono}
-                  onChangeText={(text) => setEditableData({...editableData, telefono: text})}
-                  placeholder="Tu teléfono"
-                  keyboardType="phone-pad"
-                />
-              ) : (
-                <Text style={styles.inputValue}>{userData?.telefono || 'No especificado'}</Text>
-              )}
-            </View>
+            <ProfileField 
+              label="Edad"
+              value={editableData.edad}
+              isEditing={isEditing}
+              onChangeText={(text) => setEditableData({...editableData, edad: text})}
+              placeholder="Tu edad"
+              keyboardType="number-pad"
+            />
             
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Edad</Text>
-              {isEditing ? (
-                <TextInput
-                  style={styles.textInput}
-                  value={editableData.edad}
-                  onChangeText={(text) => setEditableData({...editableData, edad: text})}
-                  placeholder="Tu edad"
-                  keyboardType="number-pad"
-                />
-              ) : (
-                <Text style={styles.inputValue}>{userData?.edad || 'No especificado'}</Text>
-              )}
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Sexo</Text>
-              {isEditing ? (
-                <View style={styles.radioGroup}>
-                  <TouchableOpacity 
-                    style={[
-                      styles.radioButton, 
-                      editableData.sexo === 'Masculino' && styles.radioButtonSelected
-                    ]}
-                    onPress={() => setEditableData({...editableData, sexo: 'Masculino'})}
-                  >
-                    <Text style={[
-                      styles.radioText,
-                      editableData.sexo === 'Masculino' && styles.radioTextSelected
-                    ]}>Masculino</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[
-                      styles.radioButton, 
-                      editableData.sexo === 'Femenino' && styles.radioButtonSelected
-                    ]}
-                    onPress={() => setEditableData({...editableData, sexo: 'Femenino'})}
-                  >
-                    <Text style={[
-                      styles.radioText,
-                      editableData.sexo === 'Femenino' && styles.radioTextSelected
-                    ]}>Femenino</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={[
-                      styles.radioButton, 
-                      editableData.sexo === 'Otro' && styles.radioButtonSelected
-                    ]}
-                    onPress={() => setEditableData({...editableData, sexo: 'Otro'})}
-                  >
-                    <Text style={[
-                      styles.radioText,
-                      editableData.sexo === 'Otro' && styles.radioTextSelected
-                    ]}>Otro</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                <Text style={styles.inputValue}>{userData?.sexo || 'No especificado'}</Text>
-              )}
-            </View>
-          </View>
+            <GenderSelector 
+              value={editableData.sexo}
+              onChange={(gender) => setEditableData({...editableData, sexo: gender})}
+              isEditing={isEditing}
+            />
+          </ProfileSection>
           
           {/* Sección de información física */}
-          <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Información Física</Text>
+          <ProfileSection title="Información Física">
+            <ProfileField 
+              label="Estatura (m)"
+              value={editableData.estatura}
+              isEditing={isEditing}
+              onChangeText={(text) => setEditableData({...editableData, estatura: text})}
+              placeholder="Tu estatura en metros"
+              keyboardType="decimal-pad"
+              suffix="m"
+            />
             
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Estatura (m)</Text>
-              {isEditing ? (
-                <TextInput
-                  style={styles.textInput}
-                  value={editableData.estatura}
-                  onChangeText={(text) => setEditableData({...editableData, estatura: text})}
-                  placeholder="Tu estatura en metros"
-                  keyboardType="decimal-pad"
-                />
-              ) : (
-                <Text style={styles.inputValue}>
-                  {userData?.estatura ? `${userData.estatura} m` : 'No especificado'}
-                </Text>
-              )}
-            </View>
+            <ProfileField 
+              label="Peso (kg)"
+              value={editableData.peso}
+              isEditing={isEditing}
+              onChangeText={(text) => setEditableData({...editableData, peso: text})}
+              placeholder="Tu peso en kilogramos"
+              keyboardType="decimal-pad"
+              suffix="kg"
+            />
             
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Peso (kg)</Text>
-              {isEditing ? (
-                <TextInput
-                  style={styles.textInput}
-                  value={editableData.peso}
-                  onChangeText={(text) => setEditableData({...editableData, peso: text})}
-                  placeholder="Tu peso en kilogramos"
-                  keyboardType="decimal-pad"
-                />
-              ) : (
-                <Text style={styles.inputValue}>
-                  {userData?.peso ? `${userData.peso} kg` : 'No especificado'}
-                </Text>
-              )}
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Ejercicio semanal (horas)</Text>
-              {isEditing ? (
-                <TextInput
-                  style={styles.textInput}
-                  value={editableData.ejercicio_semanal}
-                  onChangeText={(text) => setEditableData({...editableData, ejercicio_semanal: text})}
-                  placeholder="Horas de ejercicio a la semana"
-                  keyboardType="number-pad"
-                />
-              ) : (
-                <Text style={styles.inputValue}>
-                  {userData?.ejercicio_semanal ? `${userData.ejercicio_semanal} horas` : 'No especificado'}
-                </Text>
-              )}
-            </View>
-          </View>
+            <ProfileField 
+              label="Ejercicio semanal (horas)"
+              value={editableData.ejercicio_semanal}
+              isEditing={isEditing}
+              onChangeText={(text) => setEditableData({...editableData, ejercicio_semanal: text})}
+              placeholder="Horas de ejercicio a la semana"
+              keyboardType="number-pad"
+              suffix="horas"
+            />
+          </ProfileSection>
           
           {/* Botones de acción */}
           {isEditing && (
-            <TouchableOpacity 
-              style={styles.saveButton}
+            <ActionButton 
+              title="Guardar Cambios"
               onPress={handleSaveProfile}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <>
-                  <Ionicons name="save-outline" size={20} color="white" />
-                  <Text style={styles.saveButtonText}>Guardar Cambios</Text>
-                </>
-              )}
-            </TouchableOpacity>
+              icon="save-outline"
+              color="#4CAF50"
+              isLoading={isSaving}
+            />
           )}
           
-          <TouchableOpacity 
-            style={styles.logoutButton}
+          <ActionButton 
+            title="Cerrar Sesión"
             onPress={handleLogout}
-          >
-            <Ionicons name="log-out-outline" size={20} color="white" />
-            <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
-          </TouchableOpacity>
+            icon="log-out-outline"
+            color="#F44336"
+          />
+          
+          {/* Espacio adicional al final para evitar que el botón quede tapado */}
+          <View style={styles.bottomSpacer} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -597,44 +477,21 @@ const Perfil = () => {
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  keyboardAvoiding: {
+    flex: 1,
+  },
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
   scrollContent: {
     padding: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2196F3',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  cancelButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F44336',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  editButtonText: {
-    color: 'white',
-    marginLeft: 4,
-    fontWeight: '500',
+    // Añadir padding inferior para evitar que el botón quede tapado
+    paddingBottom: Platform.OS === 'ios' ? 120 : 150,
   },
   profileSection: {
     backgroundColor: 'white',
@@ -648,29 +505,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
-  avatarContainer: {
-    position: 'relative',
-    marginBottom: 15,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: '#e0e0e0',
-  },
-  changeAvatarButton: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    backgroundColor: '#2196F3',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'white',
-  },
   userName: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -681,154 +515,10 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 5,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    marginTop: 20,
-    width: '80%',
-    justifyContent: 'space-around',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2196F3',
-  },
-  statLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 5,
-  },
-  statDivider: {
-    width: 1,
-    height: '100%',
-    backgroundColor: '#e0e0e0',
-  },
-  formSection: {
-    backgroundColor: 'white',
-    borderRadius: 10,
-    padding: 20,
-    marginBottom: 20,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 15,
-  },
-  inputGroup: {
-    marginBottom: 15,
-  },
-  inputLabel: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 5,
-  },
-  inputValue: {
-    fontSize: 16,
-    color: '#333',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  textInput: {
-    fontSize: 16,
-    color: '#333',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: '#2196F3',
-  },
-  radioGroup: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 5,
-  },
-  radioButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#2196F3',
-  },
-  radioButtonSelected: {
-    backgroundColor: '#2196F3',
-  },
-  radioText: {
-    color: '#2196F3',
-  },
-  radioTextSelected: {
-    color: 'white',
-  },
-  saveButton: {
-    backgroundColor: '#4CAF50',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
-  },
-  saveButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  logoutButton: {
-    backgroundColor: '#F44336',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 30,
-  },
-  logoutButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: '#F44336',
-    textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#2196F3',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-  },
+  // Espacio adicional al final del ScrollView
+  bottomSpacer: {
+    height: 80, // Ajusta este valor según sea necesario
+  }
 });
 
 export default Perfil;

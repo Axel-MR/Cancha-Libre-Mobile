@@ -3,52 +3,57 @@ const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
 const helmet = require('helmet');
+const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 
 // Inicialización
 const app = express();
 const prisma = new PrismaClient();
 
+// Middleware manual para CORS (puede ser redundante si usas cors(), pero lo incluyo como pediste)
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
+
+// Servir archivos estáticos desde la carpeta 'uploads'
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Middlewares
 app.use(helmet());
 app.use(cors({
-  origin: '*',  // Permitir solicitudes de cualquier origen
+  origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(morgan('dev'));  // Log de peticiones
-app.use(express.json({ limit: '50mb' }));  // Aumentar el límite del cuerpo para aceptar grandes cantidades de datos
+app.use(morgan('dev'));
+app.use(express.json({ limit: '50mb' }));
 
-// Conexión a Prisma (base de datos)
+// Conexión a Prisma
 prisma.$connect()
   .then(() => console.log('✅ Conectado a PostgreSQL'))
   .catch(err => console.error('❌ Error de conexión a DB:', err));
 
-// Importar y usar rutas
+// Rutas
 const authRoutes = require('./routes/authRoutes');
 const centroDeportivoRoutes = require('./routes/centroDeportivoRoutes');
 const reservaRoutes = require('./routes/reservaRoutes');
-// Corregido: Usar el nombre correcto del archivo
-// Opción 1: Si el archivo se llama authRoute.js
-// const usuarioRoutes = require('./routes/authRoute');
-// Opción 2: Si el archivo se llama usuarioRoutes.js (con una 's' al final)
 const usuarioRoutes = require('./routes/usuarioRoutes');
 const reservaController = require('./controllers/reservaController');
 
-// Ruta para obtener todas las canchas
+// Endpoints
 app.get('/api/canchas', reservaController.getAllCanchas);
-
 app.use('/api/auth', authRoutes);
 app.use('/api/centros-deportivos', centroDeportivoRoutes);
 app.use('/api/reservas', reservaRoutes);
-app.use('/api/usuarios', usuarioRoutes); // Configurar rutas de usuario
+app.use('/api/usuarios', usuarioRoutes);
 
-// Ruta de verificación para comprobar el estado de la API
 app.get('/api/status', (req, res) => {
   res.json({ status: 'ok', message: 'API funcionando correctamente' });
 });
 
-// Manejo de errores global (cualquier error no manejado se pasa aquí)
+// Manejo de errores global
 app.use((err, req, res, next) => {
   console.error('🔥 Error global:', err);
   res.status(500).json({
@@ -64,9 +69,10 @@ app.listen(PORT, '0.0.0.0', () => {
   - Local: http://localhost:${PORT}
   - Red: http://192.168.100.13:${PORT}`);
 });
-// Manejo de cierre limpio
+
+// Cierre limpio
 process.on('SIGINT', async () => {
-  await prisma.$disconnect();  // Desconectar de la base de datos
+  await prisma.$disconnect();
   process.exit();
 });
 

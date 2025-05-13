@@ -13,6 +13,15 @@ const crearUsuario = async (req, res) => {
   }
 
   try {
+    // Verificar si el correo ya existe
+    const usuarioExistente = await prisma.usuarios.findUnique({
+      where: { correo }
+    });
+
+    if (usuarioExistente) {
+      return res.status(409).json({ error: 'Este correo electrónico ya está registrado' });
+    }
+
     // Hashear la contraseña antes de guardarla
     const hashedClave = await bcrypt.hash(clave, 10);
 
@@ -32,9 +41,17 @@ const crearUsuario = async (req, res) => {
       },
     });
     console.log('Usuario creado exitosamente:', newUser);
-    res.json(newUser);
+    res.status(201).json(newUser);
   } catch (error) {
     console.error('Error al crear usuario:', error);
+    
+    // Manejar específicamente el error de restricción única
+    if (error.code === 'P2002') {
+      return res.status(409).json({ 
+        error: 'Este correo electrónico ya está registrado' 
+      });
+    }
+    
     res.status(500).json({ error: 'Error al crear usuario', details: error.message });
   }
 };

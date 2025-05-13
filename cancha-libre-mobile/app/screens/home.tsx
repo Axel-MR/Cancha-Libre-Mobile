@@ -61,10 +61,10 @@ const Home = () => {
         />
         <MenuItem
           icon="calendar"
-          text="Mis Actividades"
+          text="Historial de Actividades"
           href="/screens/misActividades"
         />
-        <MenuItem icon="list" text="Mis Reservas" href="/screens/misReservas" />
+        <MenuItem icon="list" text="Próximas Reservas" href="/screens/misReservas" />
         <MenuItem icon="person" text="Mi Perfil" href="/screens/perfil" />
         <MenuItem icon="settings" text="Admin" href="/screens/adminPage" />
       </View>
