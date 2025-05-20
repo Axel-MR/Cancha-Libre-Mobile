@@ -29,6 +29,42 @@ const saveBase64Image = (base64String, folder) => {
   return `/uploads/${folder}/${filename}`;
 };
 
+// Helper para convertir imagen a base64
+const getImageAsBase64 = (imagePath) => {
+  try {
+    if (!imagePath) return null;
+    
+    const fullPath = path.join(__dirname, '../../public', imagePath);
+    if (!fs.existsSync(fullPath)) return null;
+    
+    const imageBuffer = fs.readFileSync(fullPath);
+    const extension = path.extname(fullPath).toLowerCase().substring(1);
+    const mimeType = getMimeType(extension);
+    
+    return `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+  } catch (error) {
+    console.error('Error al convertir imagen a base64:', error);
+    return null;
+  }
+};
+
+// Helper para determinar el tipo MIME
+const getMimeType = (extension) => {
+  switch (extension) {
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'gif':
+      return 'image/gif';
+    case 'webp':
+      return 'image/webp';
+    default:
+      return 'application/octet-stream';
+  }
+};
+
 // Crear un nuevo centro deportivo
 const crearCentroDeportivo = async (req, res) => {
   const { nombre, ubicacion, imagenBase64 } = req.body;
@@ -65,11 +101,15 @@ const crearCentroDeportivo = async (req, res) => {
       }
     });
 
+    // Convertir la imagen a base64 para la respuesta
+    const imagenBase64Response = imagenUrl ? getImageAsBase64(imagenUrl) : null;
+
     res.status(201).json({
       success: true,
       data: {
         ...nuevoCentro,
-        imagenUrl: imagenUrl ? `${process.env.BASE_URL || ''}${imagenUrl}` : null
+        imagenUrl: imagenUrl ? `${process.env.BASE_URL || ''}${imagenUrl}` : null,
+        imagenBase64: imagenBase64Response
       }
     });
 
@@ -101,9 +141,15 @@ const obtenerCentrosDeportivos = async (req, res) => {
       }
     });
 
-    const centrosConImagen = centros.map(centro => ({
-      ...centro,
-      imagenUrl: centro.imagenUrl ? `${process.env.BASE_URL || ''}${centro.imagenUrl}` : null
+    const centrosConImagen = await Promise.all(centros.map(async (centro) => {
+      // Convertir la imagen a base64
+      const imagenBase64 = centro.imagenUrl ? getImageAsBase64(centro.imagenUrl) : null;
+      
+      return {
+        ...centro,
+        imagenUrl: centro.imagenUrl ? `${process.env.BASE_URL || ''}${centro.imagenUrl}` : null,
+        imagenBase64
+      };
     }));
 
     res.json({
@@ -147,11 +193,27 @@ const obtenerCentroDeportivoPorId = async (req, res) => {
       });
     }
 
+    // Convertir la imagen a base64
+    const imagenBase64 = centro.imagenUrl ? getImageAsBase64(centro.imagenUrl) : null;
+    
+    // Convertir también las imágenes de las canchas
+    const canchasConBase64 = await Promise.all(centro.canchas.map(async (cancha) => {
+      const canchaImagenBase64 = cancha.imagenUrl ? getImageAsBase64(cancha.imagenUrl) : null;
+      
+      return {
+        ...cancha,
+        imagenUrl: cancha.imagenUrl ? `${process.env.BASE_URL || ''}${cancha.imagenUrl}` : null,
+        imagenBase64: canchaImagenBase64
+      };
+    }));
+
     res.json({
       success: true,
       data: {
         ...centro,
-        imagenUrl: centro.imagenUrl ? `${process.env.BASE_URL || ''}${centro.imagenUrl}` : null
+        imagenUrl: centro.imagenUrl ? `${process.env.BASE_URL || ''}${centro.imagenUrl}` : null,
+        imagenBase64,
+        canchas: canchasConBase64
       }
     });
   } catch (error) {
@@ -229,11 +291,15 @@ const actualizarCentroDeportivo = async (req, res) => {
       }
     });
 
+    // Convertir la imagen actualizada a base64
+    const imagenBase64Response = imagenUrl ? getImageAsBase64(imagenUrl) : null;
+
     res.json({
       success: true,
       data: {
         ...centroActualizado,
-        imagenUrl: centroActualizado.imagenUrl ? `${process.env.BASE_URL || ''}${centroActualizado.imagenUrl}` : null
+        imagenUrl: centroActualizado.imagenUrl ? `${process.env.BASE_URL || ''}${centroActualizado.imagenUrl}` : null,
+        imagenBase64: imagenBase64Response
       }
     });
 

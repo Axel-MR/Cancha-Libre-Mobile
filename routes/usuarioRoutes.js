@@ -7,13 +7,13 @@ const {
   eliminarUsuario
 } = require('../controllers/usuarioController');
 
-// Importar middleware de autenticación
-const authMiddleware = require('../middleware/auth');
+// Importar middleware de autenticación - corregido para desestructurar la función verificarToken
+const { verificarToken, verificarAdmin } = require('../middleware/auth');
 
-// Todas las rutas de usuarios están protegidas
-router.get('/', authMiddleware, obtenerUsuarios);
-router.get('/:id', authMiddleware, obtenerUsuarioPorId);
-router.put('/:id', authMiddleware, actualizarUsuario);
-router.delete('/:id', authMiddleware, eliminarUsuario);
+// Todas las rutas de usuarios están protegidas - usando verificarToken en lugar de authMiddleware
+router.get('/', verificarToken, obtenerUsuarios);
+router.get('/:id', verificarToken, obtenerUsuarioPorId);
+router.put('/:id', verificarToken, actualizarUsuario);
+router.delete('/:id', verificarToken, eliminarUsuario);
 
 module.exports = router;

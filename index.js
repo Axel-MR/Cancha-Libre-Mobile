@@ -1,59 +1,76 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
-const morgan = require('morgan');
-const helmet = require('helmet');
-const path = require('path');
+const cors    = require('cors');
+const morgan  = require('morgan');
+const helmet  = require('helmet');
+const path    = require('path');
 const { PrismaClient } = require('@prisma/client');
 
-// Inicialización
-const app = express();
+const app    = express();
 const prisma = new PrismaClient();
 
-// Middleware manual para CORS (puede ser redundante si usas cors(), pero lo incluyo como pediste)
+/* ──────────────────────────────
+ *  Middleware global
+ * ────────────────────────────── */
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header(
+    'Access-Control-Allow-Headers',
+    'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+  );
   next();
 });
 
-// Servir archivos estáticos desde la carpeta 'uploads'
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Middlewares
 app.use(helmet());
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(
+  cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+  })
+);
 app.use(morgan('dev'));
 app.use(express.json({ limit: '50mb' }));
 
-// Conexión a Prisma
-prisma.$connect()
+/* ──────────────────────────────
+ *  Conexión a BD
+ * ────────────────────────────── */
+prisma
+  .$connect()
   .then(() => console.log('✅ Conectado a PostgreSQL'))
   .catch(err => console.error('❌ Error de conexión a DB:', err));
 
-// Rutas
-const authRoutes = require('./routes/authRoutes');
-const centroDeportivoRoutes = require('./routes/centroDeportivoRoutes');
-const reservaRoutes = require('./routes/reservaRoutes');
-const usuarioRoutes = require('./routes/usuarioRoutes');
-const reservaController = require('./controllers/reservaController');
+/* ──────────────────────────────
+ *  Rutas API
+ * ────────────────────────────── */
+// Rutas agrupadas (incluye canchas y calificaciones)
+const apiRoutes            = require('./routes'); // <── NUEVO: índice de rutas
+// Resto de rutas existentes
+const authRoutes           = require('./routes/authRoutes');
+const centroRoutes         = require('./routes/centroDeportivoRoutes');
+const reservaRoutes        = require('./routes/reservaRoutes');
+const usuarioRoutes        = require('./routes/usuarioRoutes');
+const reservaController    = require('./controllers/reservaController');
 
-// Endpoints
+// Endpoints básicos
 app.get('/api/canchas', reservaController.getAllCanchas);
+
+// Enrutamiento modular
+app.use('/api', apiRoutes);                        // <── NUEVO: /api/canchas, /api/calificaciones
 app.use('/api/auth', authRoutes);
-app.use('/api/centros-deportivos', centroDeportivoRoutes);
+app.use('/api/centros-deportivos', centroRoutes);
 app.use('/api/reservas', reservaRoutes);
 app.use('/api/usuarios', usuarioRoutes);
 
-app.get('/api/status', (req, res) => {
-  res.json({ status: 'ok', message: 'API funcionando correctamente' });
-});
+// Endpoint de salud
+app.get('/api/status', (_, res) =>
+  res.json({ status: 'ok', message: 'API funcionando correctamente' })
+);
 
-// Manejo de errores global
+/* ──────────────────────────────
+ *  Manejo de errores global
+ * ────────────────────────────── */
 app.use((err, req, res, next) => {
   console.error('🔥 Error global:', err);
   res.status(500).json({
@@ -62,24 +79,37 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Iniciar servidor
+/* ──────────────────────────────
+ *  Servidor
+ * ────────────────────────────── */
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', () =>
   console.log(`🚀 Servidor corriendo:
   - Local: http://localhost:${PORT}
-  - Red: http://192.168.100.13:${PORT}`);
-});
+  - Red:   http://192.168.0.178:${PORT}`)
+);
 
-// Cierre limpio
+/* ──────────────────────────────
+ *  Cierre limpio
+ * ────────────────────────────── */
 process.on('SIGINT', async () => {
   await prisma.$disconnect();
   process.exit();
 });
 
-// Ejemplo de función para crear un nuevo centro deportivo
+/* ──────────────────────────────
+ *  Ejemplo de creación de centro
+ * ────────────────────────────── */
 const crearCentroDeportivo = async (req, res) => {
   try {
-    const { nombre, ubicacion, imagenUrl, imagenNombre, imagenTamaño, imagenTipo } = req.body;
+    const {
+      nombre,
+      ubicacion,
+      imagenUrl,
+      imagenNombre,
+      imagenTamaño,
+      imagenTipo
+    } = req.body;
 
     const nuevoCentro = await prisma.centroDeportivo.create({
       data: {

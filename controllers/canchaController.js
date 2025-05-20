@@ -101,6 +101,63 @@ const obtenerCanchasPorCentro = async (req, res) => {
     }
 };
 
+// Nueva función: Obtener una cancha específica con sus calificaciones
+const obtenerCancha = async (req, res) => {
+    const { id } = req.params;
+    
+    try {
+        const cancha = await prisma.Cancha.findUnique({
+            where: { id },
+            include: {
+                centroDeportivo: true
+            }
+        });
+        
+        if (!cancha) {
+            return res.status(404).json({
+                success: false,
+                error: 'Cancha no encontrada'
+            });
+        }
+        
+        // Obtener las 5 calificaciones más recientes
+        const calificacionesRecientes = await prisma.Calificacion.findMany({
+            where: {
+                canchaId: id,
+                estado: 'ACTIVA'
+            },
+            include: {
+                usuario: {
+                    select: {
+                        id: true,
+                        nombre: true,
+                        avatarUrl: true
+                    }
+                }
+            },
+            orderBy: {
+                createdAt: 'desc'
+            },
+            take: 5
+        });
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                ...cancha,
+                calificacionesRecientes
+            }
+        });
+    } catch (error) {
+        console.error('Error al obtener cancha:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Error al obtener cancha',
+            details: error.message
+        });
+    }
+};
+
 // Crear nueva cancha
 const crearCancha = async (req, res) => {
   const { id: centroDeportivoId } = req.params;
@@ -145,6 +202,9 @@ const crearCancha = async (req, res) => {
         alumbrado: alumbrado === true || alumbrado === 'true',
         jugadores: parseInt(jugadores),
         imagenUrl,
+        // Inicializar campos de calificación
+        calificacionPromedio: 0,
+        totalCalificaciones: 0,
         centroDeportivo: {
           connect: { id: centroDeportivoId }
         }
@@ -261,8 +321,16 @@ const eliminarCancha = async (req, res) => {
       deleteImageFile(cancha.imagenUrl);
     }
 
-    // Eliminar la cancha
-    await prisma.Cancha.delete({ where: { id } });
+    // Iniciar transacción para eliminar la cancha y sus calificaciones
+    await prisma.$transaction(async (tx) => {
+      // Eliminar todas las calificaciones asociadas a la cancha
+      await tx.Calificacion.deleteMany({
+        where: { canchaId: id }
+      });
+      
+      // Eliminar la cancha
+      await tx.Cancha.delete({ where: { id } });
+    });
 
     res.json({
       success: true,
@@ -278,10 +346,46 @@ const eliminarCancha = async (req, res) => {
   }
 };
 
+// Obtener canchas mejor calificadas
+const obtenerCanchasMejorCalificadas = async (req, res) => {
+  const { limite = 5, minimoCalificaciones = 3 } = req.query;
+  
+  try {
+    const canchas = await prisma.Cancha.findMany({
+      where: {
+        totalCalificaciones: {
+          gte: parseInt(minimoCalificaciones)
+        }
+      },
+      include: {
+        centroDeportivo: true
+      },
+      orderBy: {
+        calificacionPromedio: 'desc'
+      },
+      take: parseInt(limite)
+    });
+    
+    res.status(200).json({
+      success: true,
+      data: canchas
+    });
+  } catch (error) {
+    console.error('Error al obtener canchas mejor calificadas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Error al obtener canchas mejor calificadas',
+      details: error.message
+    });
+  }
+};
+
 module.exports = {
   obtenerCanchas,
   obtenerCanchasPorCentro,
+  obtenerCancha,
   crearCancha,
   actualizarCancha,
-  eliminarCancha
+  eliminarCancha,
+  obtenerCanchasMejorCalificadas
 };

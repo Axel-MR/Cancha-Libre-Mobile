@@ -18,6 +18,7 @@ import LoadingState from '../../components/reservations/LoadingState';
 import EmptyState from '../../components/reservations/EmptyState';
 import InfoBanner from '../../components/reservations/InfoBanner';
 import { commonStyles } from '../../components/reservations/CommonStyles';
+import { normalizeImageUrl } from "../../utils/imageUtils"; // Importar la función de normalización
 
 const MisReservas = () => {
   const [selectedReserva, setSelectedReserva] = useState(null);
@@ -28,7 +29,10 @@ const MisReservas = () => {
   const [canchas, setCanchas] = useState([]);
   const [misReservas, setMisReservas] = useState([]);
   const [userId, setUserId] = useState(null);
+  const [userRatings, setUserRatings] = useState({}); // Para almacenar las calificaciones del usuario
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
   const router = useRouter();
+  const [imageErrors, setImageErrors] = useState({}); // Para rastrear errores de carga de imágenes
 
   // Obtener el ID del usuario del token
   const getUserIdFromToken = async () => {
@@ -76,13 +80,25 @@ const MisReservas = () => {
       // Cargar centros deportivos
       const centrosResponse = await api.get('/centros-deportivos');
       if (centrosResponse.data && centrosResponse.data.data) {
-        setCentrosDeportivos(centrosResponse.data.data);
+        // Normalizar URLs de imágenes en los centros deportivos
+        const centrosNormalizados = centrosResponse.data.data.map(centro => ({
+          ...centro,
+          _originalImagenUrl: centro.imagenUrl, // Guardar URL original para depuración
+          imagenUrl: normalizeImageUrl(centro.imagenUrl) // Normalizar URL
+        }));
+        setCentrosDeportivos(centrosNormalizados);
       }
 
       // Cargar canchas
       const canchasResponse = await api.get('/canchas');
       if (canchasResponse.data && canchasResponse.data.data) {
-        setCanchas(canchasResponse.data.data);
+        // Normalizar URLs de imágenes en las canchas
+        const canchasNormalizadas = canchasResponse.data.data.map(cancha => ({
+          ...cancha,
+          _originalImagenUrl: cancha.imagenUrl, // Guardar URL original para depuración
+          imagenUrl: normalizeImageUrl(cancha.imagenUrl) // Normalizar URL
+        }));
+        setCanchas(canchasNormalizadas);
       }
 
       // Cargar todas las reservas del usuario
@@ -113,6 +129,12 @@ const MisReservas = () => {
       } else {
         setMisReservas([]);
       }
+
+      // Cargar calificaciones del usuario
+      await fetchUserRatings(token);
+      
+      // Resetear errores de imágenes
+      setImageErrors({});
     } catch (error) {
       console.error("Error al cargar datos:", error);
       let errorMessage = "Error al cargar los datos";
@@ -129,6 +151,88 @@ const MisReservas = () => {
     } finally {
       setIsLoading(false);
       setRefreshing(false);
+    }
+  };
+
+  // Función para cargar las calificaciones del usuario
+  const fetchUserRatings = async (token) => {
+    try {
+      // Obtener todas las canchas que el usuario ha calificado
+      const response = await api.get('/calificaciones/usuario', {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      if (response.data && response.data.success) {
+        // Crear un objeto con las calificaciones del usuario por canchaId
+        const ratings = {};
+        response.data.data.forEach(rating => {
+          ratings[rating.canchaId] = rating.valor;
+        });
+        setUserRatings(ratings);
+      }
+    } catch (error) {
+      console.error("Error al cargar calificaciones del usuario:", error);
+      // No mostrar alerta para no interrumpir la experiencia del usuario
+    }
+  };
+
+  // Función para calificar una cancha
+  const handleRateCancha = async (canchaId, rating) => {
+    try {
+      setIsSubmittingRating(true);
+      const token = await SecureStore.getItemAsync("userToken");
+      if (!token) {
+        throw new Error("No se encontró token de autenticación");
+      }
+
+      const response = await api.post(`/calificaciones/cancha/${canchaId}`, 
+        { valor: rating },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
+      if (response.data && response.data.success) {
+        // Actualizar la calificación en el estado local
+        setUserRatings(prev => ({
+          ...prev,
+          [canchaId]: rating
+        }));
+
+        // Actualizar la calificación promedio en la cancha
+        setCanchas(prevCanchas => 
+          prevCanchas.map(cancha => 
+            cancha.id === canchaId 
+              ? { 
+                  ...cancha, 
+                  calificacionPromedio: response.data.data.promedio,
+                  totalCalificaciones: response.data.data.total
+                } 
+              : cancha
+          )
+        );
+
+        Alert.alert(
+          "Calificación enviada",
+          "¡Gracias por calificar esta cancha!",
+          [{ text: "OK" }]
+        );
+      } else {
+        throw new Error("No se pudo enviar la calificación");
+      }
+    } catch (error) {
+      console.error("Error al calificar cancha:", error);
+      Alert.alert(
+        "Error",
+        "No se pudo enviar tu calificación. Inténtalo de nuevo más tarde.",
+        [{ text: "OK" }]
+      );
+    } finally {
+      setIsSubmittingRating(false);
     }
   };
 
@@ -164,39 +268,58 @@ const MisReservas = () => {
     return centro ? centro.nombre : 'Desconocido';
   };
 
+  // Función para obtener la calificación promedio de una cancha
+  const getCalificacionCancha = (id) => {
+    const cancha = canchas.find(c => c.id === id);
+    return cancha ? {
+      promedio: cancha.calificacionPromedio || 0,
+      total: cancha.totalCalificaciones || 0
+    } : { promedio: 0, total: 0 };
+  };
 
-const getImagenCentroDeportivo = (id) => {
-  const centro = centrosDeportivos.find(c => c.id === id);
-  
-  // Si no hay centro o no tiene URL de imagen, retornar null
-  if (!centro || !centro.imagenUrl) {
-    return null;
-  }
-  
-  // Si la URL ya comienza con http:// o https://, usarla directamente
-  if (centro.imagenUrl.startsWith('http://') || centro.imagenUrl.startsWith('https://')) {
+  // Función para obtener la calificación del usuario para una cancha
+  const getUserRating = (canchaId) => {
+    return userRatings[canchaId] || 0;
+  };
+
+  // Función para manejar errores de carga de imágenes
+  const handleImageError = (id, type) => {
+    console.log(`[MisReservas] Error al cargar imagen de ${type} ID: ${id}`);
+    setImageErrors(prev => ({
+      ...prev,
+      [`${type}_${id}`]: true
+    }));
+  };
+
+  // Verificar si hay error de carga para una imagen
+  const hasImageError = (id, type) => {
+    return !!imageErrors[`${type}_${id}`];
+  };
+
+  // Función para obtener la URL de la imagen del centro deportivo (usando normalizeImageUrl)
+  const getImagenCentroDeportivo = (id) => {
+    const centro = centrosDeportivos.find(c => c.id === id);
+    
+    // Si no hay centro o no tiene URL de imagen, retornar null
+    if (!centro || !centro.imagenUrl) {
+      return null;
+    }
+    
+    // La URL ya debería estar normalizada desde fetchData
     return centro.imagenUrl;
-  }
-  
-  // Si es una ruta relativa, usar HTTP
-  return `http://192.168.100.13:3000${centro.imagenUrl.startsWith('/') ? '' : '/'}${centro.imagenUrl}`;
-};
+  };
 
-// Función para obtener la URL de la imagen de la cancha
-const getImagenCancha = (id) => {
-  const cancha = canchas.find(c => c.id === id);
-  
-  if (!cancha || !cancha.imagenUrl) {
-    return null;
-  }
-  
-  if (cancha.imagenUrl.startsWith('http://') || cancha.imagenUrl.startsWith('https://')) {
+  // Función para obtener la URL de la imagen de la cancha (usando normalizeImageUrl)
+  const getImagenCancha = (id) => {
+    const cancha = canchas.find(c => c.id === id);
+    
+    if (!cancha || !cancha.imagenUrl) {
+      return null;
+    }
+    
+    // La URL ya debería estar normalizada desde fetchData
     return cancha.imagenUrl;
-  }
-  
-  // Usar HTTP
-  return `http://192.168.100.13:3000${cancha.imagenUrl.startsWith('/') ? '' : '/'}${cancha.imagenUrl}`;
-};
+  };
 
   // Función para cancelar una reserva
   const handleCancelarReserva = async (reservaId) => {
@@ -278,6 +401,15 @@ const getImagenCancha = (id) => {
     );
   };
 
+  // Función para verificar si una reserva ya pasó (para habilitar calificaciones)
+  const esReservaPasada = (fecha) => {
+    const hoy = new Date();
+    const fechaReserva = new Date(fecha);
+    fechaReserva.setHours(23, 59, 59); // Final del día
+    
+    return fechaReserva < hoy;
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={commonStyles.container}>
@@ -300,7 +432,7 @@ const getImagenCancha = (id) => {
       <View style={commonStyles.content}>
         <InfoBanner 
           title="Tus próximas actividades"
-          description="Aquí puedes ver todas las canchas que has reservado para fechas futuras. Puedes cancelar una reserva hasta 24 horas antes."
+          description="Aquí puedes ver todas las canchas que has reservado para fechas futuras. Puedes cancelar una reserva hasta 24 horas antes y calificar las canchas que ya has utilizado."
           icon="calendar"
           iconColor="#FF9800"
           backgroundColor="#FFF3E0"
@@ -322,8 +454,12 @@ const getImagenCancha = (id) => {
               borderColor = '#4CAF50';
             }
             
-            const imagenCancha = getImagenCancha(item.canchaId);
-            const imagenCentro = getImagenCentroDeportivo(item.centroDeportivoId);
+            // Determinar qué imagen usar (cancha o centro) y si hay error
+            const useImagenCancha = !!getImagenCancha(item.canchaId) && !hasImageError(item.canchaId, 'cancha');
+            const useImagenCentro = !!getImagenCentroDeportivo(item.centroDeportivoId) && !hasImageError(item.centroDeportivoId, 'centro');
+            const finalImagenUrl = useImagenCancha ? getImagenCancha(item.canchaId) : (useImagenCentro ? getImagenCentroDeportivo(item.centroDeportivoId) : null);
+            
+            const calificacion = getCalificacionCancha(item.canchaId);
             
             return (
               <ReservationCard
@@ -334,11 +470,22 @@ const getImagenCancha = (id) => {
                 deporte={getDeporteCancha(item.canchaId)}
                 centroDeportivo={getNombreCentroDeportivo(item.centroDeportivoId)}
                 cancha={getNombreCancha(item.canchaId)}
+                canchaId={item.canchaId}
                 estado={item.estado}
-                imagenUrl={imagenCancha || imagenCentro} // Usar imagen de cancha si existe, sino la del centro
+                imagenUrl={finalImagenUrl}
                 badge={badge}
                 borderColor={borderColor}
+                calificacionPromedio={calificacion.promedio}
+                totalCalificaciones={calificacion.total}
                 onPress={verDetalleReserva}
+                onImageError={() => {
+                  // Si estamos usando la imagen de la cancha y falla, intentar con la del centro
+                  if (useImagenCancha) {
+                    handleImageError(item.canchaId, 'cancha');
+                  } else if (useImagenCentro) {
+                    handleImageError(item.centroDeportivoId, 'centro');
+                  }
+                }}
               />
             );
           }}
@@ -371,6 +518,11 @@ const getImagenCancha = (id) => {
             { text: 'HOY', color: '#FF9800', icon: 'time' } : 
             undefined
           }
+          // Añadir props para calificaciones
+          userRating={getUserRating(selectedReserva.canchaId)}
+          onRateCancha={handleRateCancha}
+          isRatingEnabled={esReservaPasada(selectedReserva.fecha)} // Solo permitir calificar reservas pasadas
+          isSubmittingRating={isSubmittingRating}
           actions={selectedReserva.estado === 'RESERVADO' ? {
             primary: {
               text: "Cancelar Reserva",
@@ -387,6 +539,7 @@ const getImagenCancha = (id) => {
               onPress: () => setModalVisible(false)
             }
           }}
+          onImageError={(type, id) => handleImageError(id, type)}
         />
       )}
     </SafeAreaView>

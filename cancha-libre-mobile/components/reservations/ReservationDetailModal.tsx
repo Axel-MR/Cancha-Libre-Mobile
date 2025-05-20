@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, Modal, StyleSheet, Alert } from 'react-native';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { Ionicons } from '@expo/vector-icons';
+import StarRating from './StarRating';
+import RatingDisplay from './RatingDisplay';
 
 interface ReservationDetailModalProps {
   visible: boolean;
@@ -28,6 +30,10 @@ interface ReservationDetailModalProps {
     icon?: keyof typeof Ionicons.glyphMap;
   };
   title?: string;
+  // Nuevos props para calificaciones
+  userRating?: number;
+  onRateCancha?: (canchaId: string, rating: number) => Promise<void>;
+  isRatingEnabled?: boolean;
 }
 
 const ReservationDetailModal = ({
@@ -38,9 +44,41 @@ const ReservationDetailModal = ({
   cancha,
   actions,
   badge,
-  title = "Detalle de Reserva"
+  title = "Detalle de Reserva",
+  // Nuevos props para calificaciones
+  userRating = 0,
+  onRateCancha,
+  isRatingEnabled = false
 }: ReservationDetailModalProps) => {
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
+  const [currentRating, setCurrentRating] = useState(userRating);
+  
   if (!reservation) return null;
+
+  const handleRatingChange = async (rating: number) => {
+    if (!onRateCancha || !cancha?.id) return;
+    
+    setCurrentRating(rating);
+    setIsSubmittingRating(true);
+    
+    try {
+      await onRateCancha(cancha.id, rating);
+      Alert.alert(
+        "Calificación Enviada",
+        "¡Gracias por calificar esta cancha!",
+        [{ text: "OK" }]
+      );
+    } catch (error) {
+      console.error("Error al enviar calificación:", error);
+      Alert.alert(
+        "Error",
+        "No se pudo enviar tu calificación. Inténtalo de nuevo más tarde.",
+        [{ text: "OK" }]
+      );
+    } finally {
+      setIsSubmittingRating(false);
+    }
+  };
 
   return (
     <Modal
@@ -68,9 +106,21 @@ const ReservationDetailModal = ({
           
           <View style={styles.modalSection}>
             <Text style={styles.modalSectionTitle}>Cancha:</Text>
-            <Text style={styles.modalText}>
-              {cancha?.nombre || 'Desconocida'} ({cancha?.deporte || 'Deporte no especificado'})
-            </Text>
+            <View style={styles.canchaHeaderRow}>
+              <Text style={styles.modalText}>
+                {cancha?.nombre || 'Desconocida'} ({cancha?.deporte || 'Deporte no especificado'})
+              </Text>
+              
+              {/* Mostrar calificación promedio si existe */}
+              {cancha?.calificacionPromedio > 0 && (
+                <RatingDisplay 
+                  rating={cancha.calificacionPromedio} 
+                  totalRatings={cancha.totalCalificaciones}
+                  size={14}
+                />
+              )}
+            </View>
+            
             {cancha && (
               <Text style={styles.modalText}>
                 Para {cancha.jugadores} jugadores - {cancha.alumbrado ? 'Con alumbrado' : 'Sin alumbrado'}
@@ -110,6 +160,26 @@ const ReservationDetailModal = ({
                   {objeto.nombre} (x{objeto.cantidad})
                 </Text>
               ))}
+            </View>
+          )}
+          
+          {/* Sección de calificación */}
+          {isRatingEnabled && (
+            <View style={styles.modalSection}>
+              <Text style={styles.modalSectionTitle}>Califica esta Cancha:</Text>
+              <View style={styles.ratingContainer}>
+                <StarRating
+                  rating={currentRating}
+                  size={32}
+                  disabled={isSubmittingRating}
+                  onRatingChange={handleRatingChange}
+                />
+                <Text style={styles.ratingHelpText}>
+                  {currentRating > 0 
+                    ? `Tu calificación: ${currentRating.toFixed(1)}`
+                    : "Toca las estrellas para calificar"}
+                </Text>
+              </View>
             </View>
           )}
           
@@ -199,6 +269,12 @@ const styles = StyleSheet.create({
     marginBottom: 5,
     color: '#2196F3',
   },
+  canchaHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
   modalText: {
     fontSize: 14,
     marginBottom: 3,
@@ -222,6 +298,15 @@ const styles = StyleSheet.create({
   estadoOtro: {
     backgroundColor: '#F5F5F5',
     color: '#757575',
+  },
+  ratingContainer: {
+    alignItems: 'center',
+    marginVertical: 10,
+  },
+  ratingHelpText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#666',
   },
   modalButtonsContainer: {
     flexDirection: 'row',

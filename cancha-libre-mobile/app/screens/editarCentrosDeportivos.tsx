@@ -18,6 +18,7 @@ import * as ImagePicker from "expo-image-picker"
 import { Ionicons } from "@expo/vector-icons"
 import api from "../../services/api"
 import * as SecureStore from "expo-secure-store"
+import { normalizeImageUrl } from "../../utils/imageUtils" // Importar la función de normalización
 
 const EditarCentroDeportivo = ({ centroId }) => {
   const [isLoading, setIsLoading] = useState(true)
@@ -26,6 +27,7 @@ const EditarCentroDeportivo = ({ centroId }) => {
     nombre: "",
     ubicacion: "",
     imagenUrl: null,
+    _originalImagenUrl: null, // Para depuración
   })
   const [canchas, setCanchas] = useState([])
   const [modalVisible, setModalVisible] = useState(false)
@@ -35,6 +37,11 @@ const EditarCentroDeportivo = ({ centroId }) => {
     alumbrado: false,
     jugadores: 0,
     imagenUrl: null
+  })
+  const [imageErrors, setImageErrors] = useState({
+    centro: false,
+    canchas: {},
+    nuevaCancha: false
   })
 
   // Cargar datos del centro deportivo
@@ -55,13 +62,20 @@ const EditarCentroDeportivo = ({ centroId }) => {
         setCentroData({
           nombre: centro.nombre,
           ubicacion: centro.ubicacion,
-          imagenUrl: centro.imagenUrl
+          imagenUrl: normalizeImageUrl(centro.imagenUrl), // Normalizar URL
+          _originalImagenUrl: centro.imagenUrl // Guardar URL original para depuración
         })
         
         // Cargar las canchas asociadas a este centro
         const canchasResponse = await api.get(`/centros-deportivos/${centroId}/canchas`)
         if (canchasResponse.data && canchasResponse.data.data) {
-          setCanchas(canchasResponse.data.data)
+          // Normalizar URLs de imágenes en las canchas
+          const canchasNormalizadas = canchasResponse.data.data.map(cancha => ({
+            ...cancha,
+            _originalImagenUrl: cancha.imagenUrl, // Guardar URL original para depuración
+            imagenUrl: normalizeImageUrl(cancha.imagenUrl) // Normalizar URL
+          }))
+          setCanchas(canchasNormalizadas)
         }
       } catch (error) {
         console.error("Error al cargar centro deportivo:", error)
@@ -93,8 +107,42 @@ const EditarCentroDeportivo = ({ centroId }) => {
     }))
   }
 
+  // Manejar errores de carga de imágenes
+  const handleCentroImageError = () => {
+    console.log(`[EditarCentroDeportivo] Error al cargar imagen del centro ID: ${centroId}`)
+    setImageErrors(prev => ({
+      ...prev,
+      centro: true
+    }))
+  }
+
+  const handleCanchaImageError = (canchaId) => {
+    console.log(`[EditarCentroDeportivo] Error al cargar imagen de cancha ID: ${canchaId}`)
+    setImageErrors(prev => ({
+      ...prev,
+      canchas: {
+        ...prev.canchas,
+        [canchaId]: true
+      }
+    }))
+  }
+
+  const handleNuevaCanchaImageError = () => {
+    console.log(`[EditarCentroDeportivo] Error al cargar imagen de nueva cancha`)
+    setImageErrors(prev => ({
+      ...prev,
+      nuevaCancha: true
+    }))
+  }
+
   const pickCentroImage = async () => {
     try {
+      // Resetear el error de imagen del centro
+      setImageErrors(prev => ({
+        ...prev,
+        centro: false
+      }))
+      
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -125,6 +173,12 @@ const EditarCentroDeportivo = ({ centroId }) => {
 
   const pickCanchaImage = async () => {
     try {
+      // Resetear el error de imagen de nueva cancha
+      setImageErrors(prev => ({
+        ...prev,
+        nuevaCancha: false
+      }))
+      
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -227,8 +281,15 @@ const EditarCentroDeportivo = ({ centroId }) => {
         throw new Error("Respuesta incompleta del servidor")
       }
 
+      // Normalizar URL de la nueva cancha
+      const nuevaCanchaData = {
+        ...response.data.data,
+        _originalImagenUrl: response.data.data.imagenUrl,
+        imagenUrl: normalizeImageUrl(response.data.data.imagenUrl)
+      }
+
       // Actualizar la lista de canchas
-      setCanchas([...canchas, response.data.data])
+      setCanchas([...canchas, nuevaCanchaData])
       
       // Resetear el formulario
       setNuevaCancha({
@@ -238,6 +299,12 @@ const EditarCentroDeportivo = ({ centroId }) => {
         jugadores: 0,
         imagenUrl: null
       })
+      
+      // Resetear errores de imagen
+      setImageErrors(prev => ({
+        ...prev,
+        nuevaCancha: false
+      }))
       
       setModalVisible(false)
       Alert.alert("Éxito", "Cancha añadida correctamente")
@@ -279,6 +346,17 @@ const EditarCentroDeportivo = ({ centroId }) => {
               
               // Actualizar la lista de canchas
               setCanchas(canchas.filter(cancha => cancha.id !== canchaId))
+              
+              // Limpiar errores de imagen para esta cancha
+              setImageErrors(prev => {
+                const updatedCanchas = { ...prev.canchas }
+                delete updatedCanchas[canchaId]
+                return {
+                  ...prev,
+                  canchas: updatedCanchas
+                }
+              })
+              
               Alert.alert("Éxito", "Cancha eliminada correctamente")
             } catch (error) {
               console.error("Error al eliminar cancha:", error)
@@ -290,33 +368,49 @@ const EditarCentroDeportivo = ({ centroId }) => {
     )
   }
 
-  const renderCanchaItem = ({ item }) => (
-    <View style={styles.canchaItem}>
-      <View style={styles.canchaInfo}>
-        {item.imagenUrl ? (
-          <Image source={{ uri: item.imagenUrl }} style={styles.canchaImage} />
-        ) : (
-          <View style={styles.canchaImagePlaceholder}>
-            <Ionicons name="football-outline" size={24} color="#aaa" />
+  const renderCanchaItem = ({ item }) => {
+    // Verificar si hay error de carga para esta imagen
+    const hasImageError = imageErrors.canchas[item.id] || false
+    
+    return (
+      <View style={styles.canchaItem}>
+        <View style={styles.canchaInfo}>
+          {item.imagenUrl && !hasImageError ? (
+            <Image 
+              source={{ uri: item.imagenUrl }} 
+              style={styles.canchaImage} 
+              onError={() => handleCanchaImageError(item.id)}
+            />
+          ) : (
+            <View style={styles.canchaImagePlaceholder}>
+              <Ionicons name="football-outline" size={24} color="#aaa" />
+            </View>
+          )}
+          <View style={styles.canchaDetails}>
+            <Text style={styles.canchaName}>{item.nombre}</Text>
+            <Text style={styles.canchaDetail}>Deporte: {item.deporte}</Text>
+            <Text style={styles.canchaDetail}>Jugadores: {item.jugadores}</Text>
+            <Text style={styles.canchaDetail}>
+              Alumbrado: {item.alumbrado ? "Sí" : "No"}
+            </Text>
+            
+            {/* Mostrar información de depuración en modo desarrollo */}
+            {__DEV__ && item._originalImagenUrl && item._originalImagenUrl !== item.imagenUrl && (
+              <Text style={styles.debugText}>
+                URL normalizada: {hasImageError ? "Error al cargar" : "OK"}
+              </Text>
+            )}
           </View>
-        )}
-        <View style={styles.canchaDetails}>
-          <Text style={styles.canchaName}>{item.nombre}</Text>
-          <Text style={styles.canchaDetail}>Deporte: {item.deporte}</Text>
-          <Text style={styles.canchaDetail}>Jugadores: {item.jugadores}</Text>
-          <Text style={styles.canchaDetail}>
-            Alumbrado: {item.alumbrado ? "Sí" : "No"}
-          </Text>
         </View>
+        <TouchableOpacity 
+          style={styles.deleteButton}
+          onPress={() => handleDeleteCancha(item.id)}
+        >
+          <Ionicons name="trash-outline" size={20} color="#fff" />
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity 
-        style={styles.deleteButton}
-        onPress={() => handleDeleteCancha(item.id)}
-      >
-        <Ionicons name="trash-outline" size={20} color="#fff" />
-      </TouchableOpacity>
-    </View>
-  )
+    )
+  }
 
   if (isLoading) {
     return (
@@ -357,16 +451,35 @@ const EditarCentroDeportivo = ({ centroId }) => {
 
         <View style={styles.formGroup}>
           <Text style={styles.label}>Imagen del Centro</Text>
-          <TouchableOpacity style={styles.imagePicker} onPress={pickCentroImage}>
-            {centroData.imagenUrl ? (
-              <Image source={{ uri: centroData.imagenUrl }} style={styles.imagePreview} />
+          <TouchableOpacity 
+            style={[
+              styles.imagePicker, 
+              imageErrors.centro && styles.imagePickerError
+            ]} 
+            onPress={pickCentroImage}
+          >
+            {centroData.imagenUrl && !imageErrors.centro ? (
+              <Image 
+                source={{ uri: centroData.imagenUrl }} 
+                style={styles.imagePreview} 
+                onError={handleCentroImageError}
+              />
             ) : (
               <View style={styles.imagePlaceholder}>
                 <Ionicons name="camera" size={24} color="#666" />
-                <Text style={styles.imagePlaceholderText}>Seleccionar imagen</Text>
+                <Text style={styles.imagePlaceholderText}>
+                  {imageErrors.centro ? "Error al cargar imagen. Toca para reintentar" : "Seleccionar imagen"}
+                </Text>
               </View>
             )}
           </TouchableOpacity>
+          
+          {/* Mostrar información de depuración en modo desarrollo */}
+          {__DEV__ && centroData._originalImagenUrl && centroData._originalImagenUrl !== centroData.imagenUrl && (
+            <Text style={styles.debugText}>
+              URL normalizada: {imageErrors.centro ? "Error al cargar" : "OK"}
+            </Text>
+          )}
         </View>
 
         <TouchableOpacity 
@@ -374,7 +487,11 @@ const EditarCentroDeportivo = ({ centroId }) => {
           onPress={handleUpdateCentro} 
           disabled={isSubmitting}
         >
-          <Text style={styles.buttonText}>Actualizar Información</Text>
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Actualizar Información</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -470,13 +587,25 @@ const EditarCentroDeportivo = ({ centroId }) => {
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Imagen de la Cancha</Text>
-                <TouchableOpacity style={styles.imagePicker} onPress={pickCanchaImage}>
-                  {nuevaCancha.imagenUrl ? (
-                    <Image source={{ uri: nuevaCancha.imagenUrl }} style={styles.imagePreview} />
+                <TouchableOpacity 
+                  style={[
+                    styles.imagePicker,
+                    imageErrors.nuevaCancha && styles.imagePickerError
+                  ]} 
+                  onPress={pickCanchaImage}
+                >
+                  {nuevaCancha.imagenUrl && !imageErrors.nuevaCancha ? (
+                    <Image 
+                      source={{ uri: nuevaCancha.imagenUrl }} 
+                      style={styles.imagePreview} 
+                      onError={handleNuevaCanchaImageError}
+                    />
                   ) : (
                     <View style={styles.imagePlaceholder}>
                       <Ionicons name="camera" size={24} color="#666" />
-                      <Text style={styles.imagePlaceholderText}>Seleccionar imagen</Text>
+                      <Text style={styles.imagePlaceholderText}>
+                        {imageErrors.nuevaCancha ? "Error al cargar imagen. Toca para reintentar" : "Seleccionar imagen"}
+                      </Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -569,6 +698,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
+  imagePickerError: {
+    borderColor: '#ff6b6b',
+    borderWidth: 1,
+  },
   imagePreview: {
     width: '100%',
     height: '100%',
@@ -581,6 +714,13 @@ const styles = StyleSheet.create({
   imagePlaceholderText: {
     marginTop: 8,
     color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: 10,
+  },
+  debugText: {
+    fontSize: 10,
+    color: '#999',
+    marginTop: 4,
   },
   updateButton: {
     backgroundColor: '#2f95dc',

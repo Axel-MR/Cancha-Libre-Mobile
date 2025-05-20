@@ -20,8 +20,9 @@ model Usuarios {
   ejercicio_semanal Int?
   
   // Relaciones
-  reservas        Reserva[]           @relation("ReservasUsuario")     // ← Relacionadas como reservador
-  responsables    Reserva[]           @relation("ReservasResponsable") // ← Relacionadas como responsable
+  reservas        Reserva[]           @relation("ReservasUsuario")     
+  responsables    Reserva[]           @relation("ReservasResponsable") 
+  calificaciones  Calificacion[]      // ← Nueva relación
   
   reservasHechas  Int                 @default(0)
   faltas          Int                 @default(0)
@@ -50,17 +51,24 @@ model CentroDeportivo {
 }
 
 model Cancha {
-  id              String              @id @default(uuid())
-  nombre          String
-  deporte         String
-  alumbrado       Boolean         
-  jugadores       Int
-  imagenUrl       String?
-  centroDeportivo CentroDeportivo     @relation(fields: [centroDeportivoId], references: [id])
-  centroDeportivoId String
-  reservas        Reserva[]           
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  id                  String              @id @default(uuid())
+  nombre              String
+  deporte             String
+  alumbrado           Boolean         
+  jugadores           Int
+  imagenUrl           String?
+  
+  // Campos para el modelo híbrido
+  calificacionPromedio Float              @default(0)  // ← Nuevo campo
+  totalCalificaciones  Int                @default(0)  // ← Nuevo campo
+  
+  centroDeportivo     CentroDeportivo     @relation(fields: [centroDeportivoId], references: [id])
+  centroDeportivoId   String
+  reservas            Reserva[]           
+  calificaciones      Calificacion[]      // ← Nueva relación
+  
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 }
 
 model Reserva {
@@ -96,4 +104,23 @@ model ObjetoRenta {
   reservaId   String
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+}
+
+// Nueva tabla para calificaciones
+model Calificacion {
+  id          String    @id @default(uuid())
+  valor       Float     // Valor de 0.5 a 5.0 en incrementos de 0.5
+  estado      String    @default("ACTIVA") // ACTIVA, ELIMINADA, REPORTADA
+  
+  // Relaciones
+  cancha      Cancha    @relation(fields: [canchaId], references: [id])
+  canchaId    String
+  usuario     Usuarios  @relation(fields: [usuarioId], references: [id])
+  usuarioId   String
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Índice único para asegurar que un usuario solo pueda calificar una cancha una vez
+  @@unique([canchaId, usuarioId])
 }

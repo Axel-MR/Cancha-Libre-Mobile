@@ -17,6 +17,7 @@ import { useRouter } from "expo-router"
 import { Ionicons } from "@expo/vector-icons"
 import api from "../../services/api"
 import * as SecureStore from "expo-secure-store"
+import { normalizeImageUrl } from "../../utils/imageUtils" // Importar la función de normalización
 
 const CrearCentroDeportivo = () => {
   const router = useRouter()
@@ -26,6 +27,7 @@ const CrearCentroDeportivo = () => {
     imagenUrl: null,
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [imageError, setImageError] = useState(false)
 
   const handleChange = (name, value) => {
     setFormData((prev) => ({
@@ -36,6 +38,9 @@ const CrearCentroDeportivo = () => {
 
   const pickImage = async () => {
     try {
+      // Resetear el estado de error de imagen
+      setImageError(false)
+      
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -63,7 +68,13 @@ const CrearCentroDeportivo = () => {
     } catch (error) {
       console.error("Error al seleccionar imagen:", error)
       Alert.alert("Error", "No se pudo seleccionar la imagen")
+      setImageError(true)
     }
+  }
+
+  const handleImageError = () => {
+    console.log("[CrearCentroDeportivo] Error al cargar la imagen de vista previa")
+    setImageError(true)
   }
 
   const handleSubmit = async () => {
@@ -97,7 +108,18 @@ const CrearCentroDeportivo = () => {
         throw new Error("Respuesta incompleta del servidor")
       }
 
-      Alert.alert("Éxito", "Centro deportivo creado correctamente", [{ text: "OK", onPress: () => router.back() }])
+      // Mostrar mensaje de éxito con información adicional
+      Alert.alert(
+        "Éxito", 
+        "Centro deportivo creado correctamente", 
+        [{ 
+          text: "OK", 
+          onPress: () => {
+            // Volver a la pantalla anterior
+            router.back()
+          }
+        }]
+      )
     } catch (error) {
       console.error("Error completo:", error.response?.data || error.message)
 
@@ -114,6 +136,28 @@ const CrearCentroDeportivo = () => {
       Alert.alert("Error", errorMessage)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  // Determinar si mostrar la vista previa de la imagen o el placeholder
+  const renderImageContent = () => {
+    if (formData.imagenUrl && !imageError) {
+      return (
+        <Image 
+          source={{ uri: formData.imagenUrl }} 
+          style={styles.imagePreview} 
+          onError={handleImageError}
+        />
+      )
+    } else {
+      return (
+        <View style={styles.imagePlaceholder}>
+          <Ionicons name="camera" size={24} color="#666" />
+          <Text style={styles.imagePlaceholderText}>
+            {imageError ? "Error al cargar imagen. Toca para reintentar" : "Seleccionar imagen"}
+          </Text>
+        </View>
+      )
     }
   }
 
@@ -143,16 +187,18 @@ const CrearCentroDeportivo = () => {
 
       <View style={styles.formGroup}>
         <Text style={styles.label}>Imagen del Centro</Text>
-        <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
-          {formData.imagenUrl ? (
-            <Image source={{ uri: formData.imagenUrl }} style={styles.imagePreview} />
-          ) : (
-            <View style={styles.imagePlaceholder}>
-              <Ionicons name="camera" size={24} color="#666" />
-              <Text style={styles.imagePlaceholderText}>Seleccionar imagen</Text>
-            </View>
-          )}
+        <TouchableOpacity 
+          style={[
+            styles.imagePicker, 
+            imageError && styles.imagePickerError
+          ]} 
+          onPress={pickImage}
+        >
+          {renderImageContent()}
         </TouchableOpacity>
+        <Text style={styles.helperText}>
+          Toca para seleccionar una imagen del centro deportivo
+        </Text>
       </View>
 
       {isSubmitting ? (
@@ -207,6 +253,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
+  imagePickerError: {
+    borderColor: '#ff6b6b',
+    borderWidth: 1,
+  },
   imagePreview: {
     width: '100%',
     height: '100%',
@@ -219,6 +269,13 @@ const styles = StyleSheet.create({
   imagePlaceholderText: {
     marginTop: 8,
     color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: 10,
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
   },
   submitButton: {
     backgroundColor: '#2f95dc',

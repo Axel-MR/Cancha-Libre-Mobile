@@ -1,40 +1,61 @@
 const jwt = require('jsonwebtoken');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
-// Usar el mismo secreto en todos los lugares
-const JWT_SECRET = 'mi_secreto_super_seguro_para_desarrollo';
+// Usar un secreto consistente
+const JWT_SECRET = process.env.JWT_SECRET || 'mi_secreto_super_seguro_para_desarrollo';
 
-module.exports = (req, res, next) => {
+// Verificar token de autenticación
+const verificarToken = async (req, res, next) => {
   try {
-    const authHeader = req.header('Authorization');
+    const token = req.header('Authorization')?.replace('Bearer ', '');
     
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
+    if (!token) {
+      return res.status(401).json({
         success: false,
-        error: 'Acceso no autorizado - Token no proporcionado o formato incorrecto' 
+        error: 'Acceso denegado. Token no proporcionado.'
       });
     }
-    
-    const token = authHeader.replace('Bearer ', '');
-    
-    console.log('Verificando token con secreto:', JWT_SECRET);
     
     const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
     
-    next();
-  } catch (error) {
-    console.error('Error al verificar token:', error.name, error.message);
+    // CORRECCIÓN: Usar userId en lugar de id
+    // Confirma que el usuario existe en la BD
+    const usuario = await prisma.usuarios.findUnique({
+      where: { id: decoded.userId } // Cambiado de decoded.id a decoded.userId
+    });
     
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
+    if (!usuario) {
+      return res.status(401).json({
         success: false,
-        error: 'Token expirado' 
+        error: 'Usuario no encontrado'
       });
     }
     
-    return res.status(401).json({ 
+    // Añadir usuario a la solicitud
+    req.user = usuario;
+    next();
+  } catch (error) {
+    console.error('Error de autenticación:', error);
+    res.status(401).json({
       success: false,
-      error: 'Token inválido' 
+      error: 'Token inválido o expirado'
     });
   }
+};
+
+// Verificar si el usuario es administrador
+const verificarAdmin = (req, res, next) => {
+  if (req.user.rol !== 'ADMIN') {
+    return res.status(403).json({
+      success: false,
+      error: 'Acceso denegado. Se requieren permisos de administrador.'
+    });
+  }
+  next();
+};
+
+module.exports = {
+  verificarToken,
+  verificarAdmin
 };

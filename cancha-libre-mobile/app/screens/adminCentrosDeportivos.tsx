@@ -19,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons"
 import api from "../../services/api"
 import * as SecureStore from "expo-secure-store"
 import EditarCentroDeportivo from "./editarCentrosDeportivos"
+import { normalizeImageUrl } from "../../utils/imageUtils" // Importar la función de normalización
 
 const AdminCentrosDeportivos = () => {
   const router = useRouter()
@@ -27,6 +28,7 @@ const AdminCentrosDeportivos = () => {
   const [refreshing, setRefreshing] = useState(false)
   const [selectedCentroId, setSelectedCentroId] = useState(null)
   const [modalVisible, setModalVisible] = useState(false)
+  const [imageErrors, setImageErrors] = useState({}) // Para rastrear errores de carga de imágenes
 
   // Función para cargar los centros deportivos
   const fetchCentrosDeportivos = async () => {
@@ -42,7 +44,18 @@ const AdminCentrosDeportivos = () => {
         throw new Error("Respuesta incompleta del servidor")
       }
 
-      setCentrosDeportivos(response.data.data)
+      // Normalizar las URLs de imágenes en los datos recibidos
+      const centrosNormalizados = response.data.data.map(centro => ({
+        ...centro,
+        // Guardar tanto la URL original como la normalizada para depuración
+        _originalImagenUrl: centro.imagenUrl,
+        imagenUrl: normalizeImageUrl(centro.imagenUrl)
+      }))
+
+      setCentrosDeportivos(centrosNormalizados)
+      
+      // Reiniciar el registro de errores de imágenes
+      setImageErrors({})
     } catch (error) {
       console.error("Error al cargar centros deportivos:", error.response?.data || error.message)
       let errorMessage = "Error al cargar los centros deportivos"
@@ -69,6 +82,17 @@ const AdminCentrosDeportivos = () => {
   const onRefresh = () => {
     setRefreshing(true)
     fetchCentrosDeportivos()
+  }
+
+  // Función para manejar errores de carga de imágenes
+  const handleImageError = (centroId) => {
+    console.log(`[AdminCentrosDeportivos] Error al cargar imagen para centro ID: ${centroId}`)
+    
+    // Registrar el error para este centro
+    setImageErrors(prev => ({
+      ...prev,
+      [centroId]: true
+    }))
   }
 
   // Función para eliminar un centro deportivo
@@ -110,43 +134,59 @@ const AdminCentrosDeportivos = () => {
   }
 
   // Renderizar cada ítem de la lista
-  const renderCentroItem = ({ item }) => (
-    <View style={styles.centroItem}>
-      <View style={styles.centroImageContainer}>
-        {item.imagenUrl ? (
-          <Image source={{ uri: item.imagenUrl }} style={styles.centroImage} />
-        ) : (
-          <View style={styles.imagePlaceholder}>
-            <Ionicons name="business-outline" size={28} color="#aaa" />
-          </View>
-        )}
-      </View>
-      
-      <View style={styles.centroInfo}>
-        <Text style={styles.centroNombre}>{item.nombre}</Text>
-        <Text style={styles.centroUbicacion}>{item.ubicacion}</Text>
-        <Text style={styles.centroCanchas}>
-          {item.canchas?.length || 0} {item.canchas?.length === 1 ? "cancha" : "canchas"}
-        </Text>
-      </View>
-      
-      <View style={styles.actionButtons}>
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.editButton]}
-          onPress={() => handleEditCentro(item.id)}
-        >
-          <Ionicons name="create-outline" size={20} color="#fff" />
-        </TouchableOpacity>
+  const renderCentroItem = ({ item }) => {
+    // Verificar si hay error de carga para esta imagen
+    const hasImageError = imageErrors[item.id] || false
+    
+    return (
+      <View style={styles.centroItem}>
+        <View style={styles.centroImageContainer}>
+          {item.imagenUrl && !hasImageError ? (
+            <Image 
+              source={{ uri: item.imagenUrl }} 
+              style={styles.centroImage} 
+              onError={() => handleImageError(item.id)}
+            />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons name="business-outline" size={28} color="#aaa" />
+            </View>
+          )}
+        </View>
         
-        <TouchableOpacity 
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => handleDeleteCentro(item.id, item.nombre)}
-        >
-          <Ionicons name="trash-outline" size={20} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.centroInfo}>
+          <Text style={styles.centroNombre}>{item.nombre}</Text>
+          <Text style={styles.centroUbicacion}>{item.ubicacion}</Text>
+          <Text style={styles.centroCanchas}>
+            {item.canchas?.length || 0} {item.canchas?.length === 1 ? "cancha" : "canchas"}
+          </Text>
+          
+          {/* Mostrar información de depuración en modo desarrollo */}
+          {__DEV__ && item._originalImagenUrl && item._originalImagenUrl !== item.imagenUrl && (
+            <Text style={styles.debugText}>
+              URL normalizada: {hasImageError ? "Error al cargar" : "OK"}
+            </Text>
+          )}
+        </View>
+        
+        <View style={styles.actionButtons}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.editButton]}
+            onPress={() => handleEditCentro(item.id)}
+          >
+            <Ionicons name="create-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+          
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.deleteButton]}
+            onPress={() => handleDeleteCentro(item.id, item.nombre)}
+          >
+            <Ionicons name="trash-outline" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  )
+    )
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -314,6 +354,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#2f95dc',
     fontWeight: '500',
+  },
+  debugText: {
+    fontSize: 10,
+    color: '#999',
+    marginTop: 4,
   },
   actionButtons: {
     flexDirection: 'row',
